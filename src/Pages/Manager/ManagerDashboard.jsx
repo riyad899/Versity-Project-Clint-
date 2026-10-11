@@ -16,8 +16,14 @@ import {
   X,
   User,
   ArrowRight,
+  MapPin,
 } from 'lucide-react'
 import { useAuth } from '../../Hooks/useAuth'
+import DashboardShell from '@/Components/Dashboard/DashboardShell'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/Components/ui/card'
+import { Button } from '@/Components/ui/button'
+import { Badge } from '@/Components/ui/badge'
+import { Input } from '@/Components/ui/input'
 
 const BUS_STATUS = ['active', 'maintenance', 'inactive']
 
@@ -69,7 +75,7 @@ export default function ManagerDashboard() {
       const res = await apiClient.get('/api/v1/transportation-managers/users', { params })
       setUsers(res.data?.data || [])
     } catch {
-      // fallback if needed
+      // fallback
     }
   }, [search])
 
@@ -102,30 +108,35 @@ export default function ManagerDashboard() {
   }, [])
 
   useEffect(() => {
-    setLoading(true)
-    Promise.all([fetchUsers(), fetchBuses(), fetchRoutes(), fetchDrivers()]).finally(() => {
-      setLoading(false)
-    })
-  }, [fetchUsers, fetchBuses, fetchRoutes, fetchDrivers])
+    if (activeTab === 'users') {
+      fetchUsers()
+    } else if (activeTab === 'bus-infos') {
+      fetchBuses()
+    } else if (activeTab === 'driver-assign') {
+      fetchBuses()
+      fetchDrivers()
+      fetchRoutes()
+    }
+  }, [activeTab, fetchUsers, fetchBuses, fetchDrivers, fetchRoutes])
 
-  // ---- PROMOTE USER TO DRIVER ----
-  const handleMakeDriver = async (targetUser) => {
-    if (!window.confirm(`Promote "${targetUser.name}" from Passenger to Driver?`)) {
+  // ---- MAKE DRIVER ----
+  const handleMakeDriver = async (user) => {
+    if (!window.confirm(`Are you sure you want to promote "${user.name}" to Driver?`)) {
       return
     }
     try {
-      const uid = targetUser._id || targetUser.id
-      await apiClient.patch(`/api/v1/transportation-managers/users/${uid}/make-driver`)
-      toast.success(`${targetUser.name} is now registered as a Driver!`)
+      await apiClient.patch(`/api/v1/transportation-managers/users/${user._id || user.id}/make-driver`)
+      toast.success(`${user.name} promoted to Driver successfully!`)
       fetchUsers()
       fetchDrivers()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to promote user to driver')
+      toast.error(err.response?.data?.message || 'Failed to promote user')
     }
   }
 
   // ---- BUS CRUD ----
   const resetBusForm = () => {
+    setEditingBus(null)
     setBusForm({
       busNumber: '',
       name: '',
@@ -133,25 +144,28 @@ export default function ManagerDashboard() {
       capacity: '',
       status: 'active',
     })
-    setEditingBus(null)
-    setShowBusModal(false)
   }
 
   const handleBusSubmit = async (e) => {
     e.preventDefault()
-    const payload = {
-      ...busForm,
-      capacity: Number(busForm.capacity),
-    }
-
     try {
+      const payload = {
+        busNumber: busForm.busNumber,
+        name: busForm.name,
+        licensePlate: busForm.licensePlate,
+        capacity: Number(busForm.capacity),
+        status: busForm.status,
+      }
+
       if (editingBus) {
         await apiClient.patch(`/api/v1/buses/${editingBus._id || editingBus.id}`, payload)
-        toast.success('Bus information updated successfully!')
+        toast.success('Bus details updated successfully!')
       } else {
         await apiClient.post('/api/v1/buses', payload)
-        toast.success('New campus bus added successfully!')
+        toast.success('New bus added successfully!')
       }
+
+      setShowBusModal(false)
       resetBusForm()
       fetchBuses()
     } catch (err) {
@@ -233,35 +247,50 @@ export default function ManagerDashboard() {
       status: 'active',
     })
     setEditingRoute(null)
-    setShowRouteModal(false)
   }
 
   const handleRouteSubmit = async (e) => {
     e.preventDefault()
-    const payload = {
-      routeName: routeForm.routeName,
-      startPoint: routeForm.startPoint,
-      endPoint: routeForm.endPoint,
-      status: routeForm.status,
-      stops: routeForm.stops ? routeForm.stops.split(',').map((s) => s.trim()).filter(Boolean) : [],
-      scheduleTimes: routeForm.scheduleTimes
-        ? routeForm.scheduleTimes.split(',').map((t) => t.trim()).filter(Boolean)
-        : [],
-    }
-
     try {
+      const stopsArr = routeForm.stops
+        ? routeForm.stops
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : []
+      const timesArr = routeForm.scheduleTimes
+        ? routeForm.scheduleTimes
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : []
+
+      const payload = {
+        routeName: routeForm.routeName,
+        startPoint: routeForm.startPoint,
+        endPoint: routeForm.endPoint,
+        stops: stopsArr,
+        scheduleTimes: timesArr,
+        status: routeForm.status,
+      }
+
       if (editingRoute) {
         await apiClient.patch(`/api/v1/routes/${editingRoute._id || editingRoute.id}`, payload)
         toast.success('Route updated successfully!')
       } else {
         await apiClient.post('/api/v1/routes', payload)
-        toast.success('New campus route created!')
+        toast.success('Route created successfully!')
       }
+
+      setShowRouteModal(false)
       resetRouteForm()
       fetchRoutes()
-      fetchBuses()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save route')
+      toast.error(
+        err.response?.data?.message ||
+          err.response?.data?.errorSources?.[0]?.message ||
+          'Failed to save route'
+      )
     }
   }
 
@@ -279,287 +308,287 @@ export default function ManagerDashboard() {
   }
 
   const handleDeleteRoute = async (route) => {
-    if (!window.confirm(`Delete route "${route.routeName}"?`)) return
+    if (!window.confirm(`Are you sure you want to delete route "${route.routeName}"?`)) {
+      return
+    }
     try {
       await apiClient.delete(`/api/v1/routes/${route._id || route.id}`)
-      toast.success('Route deleted!')
+      toast.success('Route deleted successfully!')
       fetchRoutes()
-      fetchBuses()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete route')
     }
   }
 
   return (
-    <div className="dashboard-layout">
-      {/* Sidebar */}
-      <aside className="dashboard-sidebar">
-        <div className="sidebar-brand">
-          <span className="sidebar-brand-icon">
-            <ClipboardList size={20} />
-          </span>
+    <DashboardShell
+      roleTitle="Manager Portal"
+      roleSubtitle="Transportation Operations"
+      roleBadge="Manager"
+      roleBadgeVariant="softGreen"
+      portalIcon={ClipboardList}
+      navItems={[
+        {
+          id: 'users',
+          label: 'User Accounts',
+          icon: Users,
+          badge: users.length,
+        },
+        {
+          id: 'bus-infos',
+          label: 'Bus Fleet',
+          icon: Bus,
+          badge: buses.length,
+        },
+        {
+          id: 'driver-assign',
+          label: 'Driver & Route Assign',
+          icon: Route,
+        },
+      ]}
+      activeTab={activeTab}
+      onTabChange={(tab) => {
+        setActiveTab(tab)
+        setSearch('')
+      }}
+      headerActions={
+        activeTab === 'bus-infos' ? (
+          <Button
+            type="button"
+            onClick={() => {
+              resetBusForm()
+              setShowBusModal(true)
+            }}
+            className="h-9 px-3.5 text-xs sm:h-10 sm:px-4 sm:text-sm"
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> Add Campus Bus
+          </Button>
+        ) : activeTab === 'driver-assign' ? (
+          <Button
+            type="button"
+            onClick={() => {
+              resetRouteForm()
+              setShowRouteModal(true)
+            }}
+            className="h-9 px-3.5 text-xs sm:h-10 sm:px-4 sm:text-sm"
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> Create Route
+          </Button>
+        ) : null
+      }
+    >
+      {/* ========================================================= */}
+      {/* TAB 1: USERS (Browse users, promote to driver)           */}
+      {/* ========================================================= */}
+      {activeTab === 'users' && (
+        <div className="space-y-6">
           <div>
-            <h3>Manager Portal</h3>
-            <p>Campus Transportation</p>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+              Passenger & User Accounts
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Browse campus passengers and promote qualified students or staff to official drivers.
+            </p>
           </div>
-        </div>
 
-        <nav className="sidebar-nav">
-          <button
-            type="button"
-            className={`sidebar-nav-item ${activeTab === 'users' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('users')
-              setSearch('')
-            }}
-          >
-            <Users className="sidebar-icon" size={18} />
-            <span>Users</span>
-            <span className="sidebar-counter">{users.length}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`sidebar-nav-item ${activeTab === 'bus-infos' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('bus-infos')
-              setSearch('')
-            }}
-          >
-            <Bus className="sidebar-icon" size={18} />
-            <span>Bus Infos</span>
-            <span className="sidebar-counter">{buses.length}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`sidebar-nav-item ${activeTab === 'driver-assign' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('driver-assign')
-              setSearch('')
-            }}
-          >
-            <UserPlus className="sidebar-icon" size={18} />
-            <span>Driver Assign</span>
-          </button>
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="sidebar-user-pill">
-            <div className="user-avatar" style={{ background: '#10b981' }}>
-              {currentAuthUser?.name?.charAt(0).toUpperCase() || 'M'}
-            </div>
-            <div className="sidebar-user-text">
-              <strong>{currentAuthUser?.name || 'Transport Manager'}</strong>
-              <span className="badge badge-green">Manager</span>
-            </div>
+          {/* Search */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Search passenger accounts by name or email..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 bg-white"
+            />
           </div>
-        </div>
-      </aside>
 
-      {/* Main Content Area */}
-      <main className="dashboard-content">
-        {/* ========================================================= */}
-        {/* TAB 1: USERS (Manager can view users and promote to driver) */}
-        {/* ========================================================= */}
-        {activeTab === 'users' && (
-          <div>
-            <div className="content-header">
-              <div>
-                <h2>Passenger & User Accounts</h2>
-                <p className="content-subtitle">
-                  Browse campus users and promote registered passengers to official campus drivers.
+          {/* Table Card */}
+          <Card className="border-slate-200/80 shadow-xs overflow-hidden">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                <p className="mt-3 text-sm font-medium">Loading user list...</p>
+              </div>
+            ) : users.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 mb-3">
+                  <Users className="h-6 w-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">No passenger accounts found</h3>
+                <p className="mt-1 text-sm text-slate-500 max-w-sm">
+                  All active users may already have roles assigned or your search returned no matches.
                 </p>
               </div>
-            </div>
-
-            <div className="filter-bar">
-              <div className="search-box">
-                <Search className="search-icon" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search passenger accounts by name or email..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="table-wrap">
-              {loading ? (
-                <div className="loading-screen">
-                  <div className="spinner" />
-                  <p>Loading users...</p>
-                </div>
-              ) : users.length === 0 ? (
-                <div className="empty-state">
-                  <div className="stat-icon" style={{ margin: '0 auto 12px', background: 'rgba(31, 89, 73, 0.1)', color: 'var(--forest)', width: '48px', height: '48px' }}>
-                    <Users size={24} />
-                  </div>
-                  <h3>No passenger users found</h3>
-                  <p>All current users may already be assigned roles or search returned no results.</p>
-                </div>
-              ) : (
-                <table className="data-table">
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr>
-                      <th>Passenger Name</th>
-                      <th>Email</th>
-                      <th>Current Role</th>
-                      <th>Joined</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                      <th className="px-5 py-3.5">Passenger Name</th>
+                      <th className="px-5 py-3.5">Email Address</th>
+                      <th className="px-5 py-3.5">Current Role</th>
+                      <th className="px-5 py-3.5">Joined Date</th>
+                      <th className="px-5 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100 text-sm">
                     {users.map((u) => {
                       const uid = u._id || u.id
                       return (
-                        <tr key={uid}>
-                          <td>
-                            <div className="td-name">
-                              <div className="user-avatar" style={{ background: '#3b82f6' }}>
+                        <tr key={uid} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white shadow-2xs">
                                 {u.name?.charAt(0).toUpperCase()}
                               </div>
-                              <strong>{u.name}</strong>
+                              <span className="font-bold text-slate-900">{u.name}</span>
                             </div>
                           </td>
-                          <td>{u.email}</td>
-                          <td>
-                            <span className="badge badge-blue">Passenger</span>
+                          <td className="px-5 py-3.5 text-slate-600">{u.email}</td>
+                          <td className="px-5 py-3.5">
+                            <Badge variant="softBlue" className="capitalize text-xs">
+                              Passenger
+                            </Badge>
                           </td>
-                          <td style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                          <td className="px-5 py-3.5 text-xs text-slate-500">
                             {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}
                           </td>
-                          <td>
-                            <div className="actions-cell" style={{ justifyContent: 'flex-end' }}>
-                              <button
-                                type="button"
-                                className="button button-secondary"
-                                style={{ padding: '7px 14px', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                onClick={() => handleMakeDriver(u)}
-                              >
-                                <UserPlus size={16} /> Make Driver
-                              </button>
-                            </div>
+                          <td className="px-5 py-3.5 text-right">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-xs font-bold text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 hover:text-emerald-800"
+                              onClick={() => handleMakeDriver(u)}
+                            >
+                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Make Driver
+                            </Button>
                           </td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
-              )}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 2: BUS INFOS (Manage bus fleet)                       */}
+      {/* ========================================================= */}
+      {activeTab === 'bus-infos' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                Campus Bus Fleet
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Register, configure, and manage university shuttle buses and operational statuses.
+              </p>
             </div>
           </div>
-        )}
 
-        {/* ========================================================= */}
-        {/* TAB 2: BUS INFOS (Manager can add, update, manage buses)    */}
-        {/* ========================================================= */}
-        {activeTab === 'bus-infos' && (
-          <div>
-            <div className="content-header">
-              <div>
-                <h2>Campus Bus Informations</h2>
-                <p className="content-subtitle">
-                  Add, update, and manage all campus buses and their basic operational specifications.
+          {/* Search */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Search buses by number, name, or plate..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 bg-white"
+            />
+          </div>
+
+          {/* Table Card */}
+          <Card className="border-slate-200/80 shadow-xs overflow-hidden">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                <p className="mt-3 text-sm font-medium">Loading buses...</p>
+              </div>
+            ) : buses.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 mb-3">
+                  <Bus className="h-6 w-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">No buses registered yet</h3>
+                <p className="mt-1 text-sm text-slate-500 max-w-sm">
+                  Click "Add Campus Bus" above to add your first bus to the fleet.
                 </p>
               </div>
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={() => {
-                  resetBusForm()
-                  setShowBusModal(true)
-                }}
-              >
-                <Plus size={16} style={{ marginRight: '6px' }} /> Add Campus Bus
-              </button>
-            </div>
-
-            <div className="filter-bar">
-              <div className="search-box">
-                <Search className="search-icon" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search buses by number, name, or license plate..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="table-wrap">
-              {loading ? (
-                <div className="loading-screen">
-                  <div className="spinner" />
-                  <p>Loading bus fleet...</p>
-                </div>
-              ) : buses.length === 0 ? (
-                <div className="empty-state">
-                  <div className="stat-icon" style={{ margin: '0 auto 12px', background: 'rgba(31, 89, 73, 0.1)', color: 'var(--forest)', width: '48px', height: '48px' }}>
-                    <Bus size={24} />
-                  </div>
-                  <h3>No campus buses found</h3>
-                  <p>Click "Add Campus Bus" above to add your first bus to the system.</p>
-                </div>
-              ) : (
-                <table className="data-table">
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr>
-                      <th>Bus Number</th>
-                      <th>Bus Model / Name</th>
-                      <th>License Plate</th>
-                      <th>Seating Capacity</th>
-                      <th>Operational Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                      <th className="px-5 py-3.5">Bus Number</th>
+                      <th className="px-5 py-3.5">Bus Model / Name</th>
+                      <th className="px-5 py-3.5">License Plate</th>
+                      <th className="px-5 py-3.5">Capacity</th>
+                      <th className="px-5 py-3.5">Status</th>
+                      <th className="px-5 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100 text-sm">
                     {buses.map((bus) => {
                       const bid = bus._id || bus.id
                       return (
-                        <tr key={bid}>
-                          <td>
-                            <span className="bus-number-badge">#{bus.busNumber}</span>
+                        <tr key={bid} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <Badge variant="secondary" className="font-mono font-bold text-xs">
+                              #{bus.busNumber}
+                            </Badge>
                           </td>
-                          <td>
-                            <strong>{bus.name}</strong>
+                          <td className="px-5 py-3.5">
+                            <strong className="text-slate-900 font-bold">{bus.name}</strong>
                           </td>
-                          <td>{bus.licensePlate}</td>
-                          <td>
-                            <strong>{bus.capacity}</strong> seats
+                          <td className="px-5 py-3.5 font-mono text-xs text-slate-600">
+                            {bus.licensePlate}
                           </td>
-                          <td>
-                            <span
-                              className={`badge ${
+                          <td className="px-5 py-3.5 text-slate-700">
+                            <span className="font-bold text-slate-900">{bus.capacity}</span> seats
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <Badge
+                              variant={
                                 bus.status === 'active'
-                                  ? 'badge-green'
+                                  ? 'softGreen'
                                   : bus.status === 'maintenance'
-                                  ? 'badge-amber'
-                                  : 'badge-red'
-                              }`}
+                                  ? 'softAmber'
+                                  : 'softRed'
+                              }
+                              className="capitalize text-xs"
                             >
                               {bus.status}
-                            </span>
+                            </Badge>
                           </td>
-                          <td>
-                            <div className="actions-cell" style={{ justifyContent: 'flex-end' }}>
-                              <button
+                          <td className="px-5 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
                                 type="button"
-                                className="action-btn"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
                                 title="Edit Bus Details"
                                 onClick={() => startEditBus(bus)}
                               >
-                                <Pencil size={15} />
-                              </button>
-                              <button
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
                                 type="button"
-                                className="action-btn btn-delete"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
                                 title="Delete Bus"
                                 onClick={() => handleDeleteBus(bus)}
                               >
-                                <Trash2 size={15} />
-                              </button>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -567,181 +596,161 @@ export default function ManagerDashboard() {
                     })}
                   </tbody>
                 </table>
-              )}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
 
-        {/* ========================================================= */}
-        {/* TAB 3: DRIVER ASSIGN (Assign drivers to buses & routes)   */}
-        {/* ========================================================= */}
-        {activeTab === 'driver-assign' && (
+      {/* ========================================================= */}
+      {/* TAB 3: DRIVER ASSIGN (Driver & route mapping)             */}
+      {/* ========================================================= */}
+      {activeTab === 'driver-assign' && (
+        <div className="space-y-8">
           <div>
-            <div className="content-header">
-              <div>
-                <h2>Driver & Route Assignments</h2>
-                <p className="content-subtitle">
-                  Assign licensed drivers to specific campus buses and map buses to transportation routes.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={() => {
-                  resetRouteForm()
-                  setShowRouteModal(true)
-                }}
-              >
-                <Plus size={16} style={{ marginRight: '6px' }} /> Create New Route
-              </button>
-            </div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+              Driver & Route Assignments
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Pair campus drivers with buses and bind buses to specific transit routes.
+            </p>
+          </div>
 
-            <div className="filter-bar">
-              <div className="search-box">
-                <Search className="search-icon" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search buses to assign drivers or routes..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
+          {/* Search */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Search buses to assign drivers or routes..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 bg-white"
+            />
+          </div>
 
-            <div className="table-wrap">
-              {buses.length === 0 ? (
-                <div className="empty-state">
-                  <div className="stat-icon" style={{ margin: '0 auto 12px', background: 'rgba(31, 89, 73, 0.1)', color: 'var(--forest)', width: '48px', height: '48px' }}>
-                    <Bus size={24} />
-                  </div>
-                  <h3>No campus buses available</h3>
-                  <p>Add buses in the "Bus Infos" tab first before assigning drivers and routes.</p>
-                </div>
-              ) : (
-                <table className="data-table">
+          {/* Bus Assignment Table */}
+          <Card className="border-slate-200/80 shadow-xs overflow-hidden">
+            <CardHeader className="py-4 px-5 border-b border-slate-100 bg-slate-50/50">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <Bus className="h-4 w-4 text-blue-600" /> Fleet Assignment Overview
+              </CardTitle>
+            </CardHeader>
+            {buses.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">
+                No buses found. Add buses in the "Bus Fleet" tab first.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr>
-                      <th>Bus Information</th>
-                      <th>Status</th>
-                      <th>Assigned Driver</th>
-                      <th>Assigned Route</th>
-                      <th style={{ textAlign: 'right' }}>Assignment Actions</th>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                      <th className="px-5 py-3.5">Bus Information</th>
+                      <th className="px-5 py-3.5">Status</th>
+                      <th className="px-5 py-3.5">Assigned Driver</th>
+                      <th className="px-5 py-3.5">Assigned Route</th>
+                      <th className="px-5 py-3.5 text-right">Assignments</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100 text-sm">
                     {buses.map((bus) => {
                       const bid = bus._id || bus.id
                       return (
-                        <tr key={bid}>
-                          {/* Bus Info */}
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="bus-number-badge">#{bus.busNumber}</span>
-                                <strong style={{ fontSize: '15px' }}>{bus.name}</strong>
+                        <tr key={bid} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <Badge variant="secondary" className="font-mono font-bold text-xs">
+                                #{bus.busNumber}
+                              </Badge>
+                              <div>
+                                <span className="font-bold text-slate-900 block leading-tight">
+                                  {bus.name}
+                                </span>
+                                <span className="text-xs text-slate-500 font-mono">
+                                  {bus.licensePlate} • {bus.capacity} seats
+                                </span>
                               </div>
-                              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                                Plate: {bus.licensePlate} • Capacity: {bus.capacity} seats
-                              </span>
                             </div>
                           </td>
-
-                          {/* Status */}
-                          <td>
-                            <span
-                              className={`badge ${
+                          <td className="px-5 py-3.5">
+                            <Badge
+                              variant={
                                 bus.status === 'active'
-                                  ? 'badge-green'
+                                  ? 'softGreen'
                                   : bus.status === 'maintenance'
-                                  ? 'badge-amber'
-                                  : 'badge-red'
-                              }`}
+                                  ? 'softAmber'
+                                  : 'softRed'
+                              }
+                              className="capitalize text-xs"
                             >
                               {bus.status}
-                            </span>
+                            </Badge>
                           </td>
-
-                          {/* Driver */}
-                          <td>
+                          <td className="px-5 py-3.5">
                             {bus.assignedDriver ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div
-                                  className="user-avatar"
-                                  style={{ background: '#f59e0b', width: 28, height: 28, fontSize: 12 }}
-                                >
+                              <div className="flex items-center gap-2">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-500 text-xs font-bold text-white shadow-2xs">
                                   {bus.assignedDriver.name?.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                  <strong style={{ fontSize: '13px', display: 'block' }}>
+                                  <span className="font-bold text-slate-900 text-xs block">
                                     {bus.assignedDriver.name}
-                                  </strong>
-                                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                                  </span>
+                                  <span className="text-[11px] text-slate-500 block">
                                     {bus.assignedDriver.email}
                                   </span>
                                 </div>
                               </div>
                             ) : (
-                              <span style={{ fontSize: '13px', color: 'var(--muted)', fontStyle: 'italic' }}>
-                                No driver assigned
-                              </span>
+                              <span className="text-xs text-slate-400 italic">No driver assigned</span>
                             )}
                           </td>
-
-                          {/* Route */}
-                          <td>
+                          <td className="px-5 py-3.5">
                             {bus.assignedRoute ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                <strong style={{ fontSize: '13px', color: 'var(--forest)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                  <Route size={13} /> {bus.assignedRoute.routeName}
+                              <div>
+                                <strong className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
+                                  <Route className="h-3 w-3" /> {bus.assignedRoute.routeName}
                                 </strong>
-                                <span style={{ fontSize: '12px', color: 'var(--ink)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                  {bus.assignedRoute.startPoint} <ArrowRight size={12} /> {bus.assignedRoute.endPoint}
+                                <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                  {bus.assignedRoute.startPoint} <ArrowRight className="h-2.5 w-2.5" />{' '}
+                                  {bus.assignedRoute.endPoint}
                                 </span>
                               </div>
                             ) : (
-                              <span style={{ fontSize: '13px', color: 'var(--muted)', fontStyle: 'italic' }}>
-                                No route assigned
-                              </span>
+                              <span className="text-xs text-slate-400 italic">No route assigned</span>
                             )}
                           </td>
-
-                          {/* Actions */}
-                          <td>
-                            <div className="actions-cell" style={{ justifyContent: 'flex-end', gap: '8px' }}>
-                              <button
+                          <td className="px-5 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
                                 type="button"
-                                className="button button-secondary"
-                                style={{
-                                  padding: '6px 12px',
-                                  fontSize: '12px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '5px',
-                                }}
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8"
                                 onClick={() => {
                                   setAssignDriverModal(bus)
-                                  setSelectedDriverId(bus.assignedDriver?._id || bus.assignedDriver?.id || '')
+                                  setSelectedDriverId(
+                                    bus.assignedDriver?._id || bus.assignedDriver?.id || ''
+                                  )
                                 }}
                               >
-                                <User size={13} /> {bus.assignedDriver ? 'Change Driver' : 'Assign Driver'}
-                              </button>
-                              <button
+                                <User className="h-3.5 w-3.5 mr-1" />
+                                {bus.assignedDriver ? 'Change Driver' : 'Assign Driver'}
+                              </Button>
+                              <Button
                                 type="button"
-                                className="button button-secondary"
-                                style={{
-                                  padding: '6px 12px',
-                                  fontSize: '12px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '5px',
-                                }}
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8"
                                 onClick={() => {
                                   setAssignRouteModal(bus)
-                                  setSelectedRouteId(bus.assignedRoute?._id || bus.assignedRoute?.id || '')
+                                  setSelectedRouteId(
+                                    bus.assignedRoute?._id || bus.assignedRoute?.id || ''
+                                  )
                                 }}
                               >
-                                <Route size={13} /> {bus.assignedRoute ? 'Change Route' : 'Assign Route'}
-                              </button>
+                                <Route className="h-3.5 w-3.5 mr-1" />
+                                {bus.assignedRoute ? 'Change Route' : 'Assign Route'}
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -749,103 +758,166 @@ export default function ManagerDashboard() {
                     })}
                   </tbody>
                 </table>
-              )}
+              </div>
+            )}
+          </Card>
+
+          {/* Configured Routes Sub-Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">
+                  Configured Campus Routes ({routes.length})
+                </h3>
+                <p className="text-xs text-slate-500">
+                  List of established origin-to-destination pathways across the campus.
+                </p>
+              </div>
             </div>
 
-            {/* Configured Routes Sub-section */}
-            <div style={{ marginTop: '40px' }}>
-              <h3 style={{ fontSize: '20px', marginBottom: '14px' }}>Configured Campus Routes ({routes.length})</h3>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Route Name</th>
-                      <th>Origin</th>
-                      <th>Destination</th>
-                      <th>Stops</th>
-                      <th>Departures</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {routes.map((r) => (
-                      <tr key={r._id || r.id}>
-                        <td>
-                          <strong>{r.routeName}</strong>
-                        </td>
-                        <td>{r.startPoint}</td>
-                        <td>{r.endPoint}</td>
-                        <td>{r.stops?.join(', ') || 'Direct'}</td>
-                        <td>{r.scheduleTimes?.join(', ') || 'Flexible'}</td>
-                        <td>
-                          <div className="actions-cell" style={{ justifyContent: 'flex-end' }}>
-                            <button type="button" className="action-btn" onClick={() => startEditRoute(r)}>
-                              <HiPencil />
-                            </button>
-                            <button
-                              type="button"
-                              className="action-btn btn-delete"
-                              onClick={() => handleDeleteRoute(r)}
-                            >
-                              <HiTrash />
-                            </button>
-                          </div>
-                        </td>
+            <Card className="border-slate-200/80 shadow-xs overflow-hidden">
+              {routes.length === 0 ? (
+                <div className="p-8 text-center text-sm text-slate-500">
+                  No routes registered yet. Click "Create Route" above to add one.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="px-5 py-3.5">Route Name</th>
+                        <th className="px-5 py-3.5">Origin</th>
+                        <th className="px-5 py-3.5">Destination</th>
+                        <th className="px-5 py-3.5">Stops</th>
+                        <th className="px-5 py-3.5">Departures</th>
+                        <th className="px-5 py-3.5 text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-sm">
+                      {routes.map((r) => (
+                        <tr key={r._id || r.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5 font-bold text-slate-900">{r.routeName}</td>
+                          <td className="px-5 py-3.5 text-slate-700">{r.startPoint}</td>
+                          <td className="px-5 py-3.5 text-slate-700">{r.endPoint}</td>
+                          <td className="px-5 py-3.5 text-xs text-slate-500">
+                            {r.stops?.join(', ') || 'Direct non-stop'}
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-slate-500">
+                            {r.scheduleTimes?.join(', ') || 'Flexible'}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                title="Edit Route"
+                                onClick={() => startEditRoute(r)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                title="Delete Route"
+                                onClick={() => handleDeleteRoute(r)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ========================================================= */}
-        {/* MODAL: ADD / EDIT BUS                                     */}
-        {/* ========================================================= */}
-        {showBusModal && (
-          <div className="modal-backdrop" onClick={() => setShowBusModal(false)}>
-            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h3>{editingBus ? 'Edit Bus Information' : 'Add New Campus Bus'}</h3>
-                <button type="button" className="btn-close" onClick={() => setShowBusModal(false)}>
-                  <X size={18} />
-                </button>
+      {/* ========================================================= */}
+      {/* MODAL: ADD / EDIT BUS                                     */}
+      {/* ========================================================= */}
+      {showBusModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs"
+          onClick={() => setShowBusModal(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">
+                  {editingBus ? 'Edit Bus Information' : 'Add New Campus Bus'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Enter identification number, vehicle name, and seating parameters
+                </p>
               </div>
-              <form className="modal-form" onSubmit={handleBusSubmit}>
-                <label>
-                  Bus Identification Number *
-                  <input
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowBusModal(false)}
+                className="h-8 w-8 text-slate-400 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleBusSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    Bus Number (ID) *
+                  </label>
+                  <Input
                     type="text"
                     placeholder="e.g. BUS-101"
                     value={busForm.busNumber}
                     onChange={(e) => setBusForm({ ...busForm, busNumber: e.target.value })}
                     required
                   />
-                </label>
-                <label>
-                  Bus Model / Name *
-                  <input
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    Model / Name *
+                  </label>
+                  <Input
                     type="text"
                     placeholder="e.g. Scania City Express"
                     value={busForm.name}
                     onChange={(e) => setBusForm({ ...busForm, name: e.target.value })}
                     required
                   />
-                </label>
-                <label>
-                  License Plate *
-                  <input
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    License Plate *
+                  </label>
+                  <Input
                     type="text"
                     placeholder="e.g. DHA-GA-9876"
                     value={busForm.licensePlate}
                     onChange={(e) => setBusForm({ ...busForm, licensePlate: e.target.value })}
                     required
                   />
-                </label>
-                <label>
-                  Seating Capacity *
-                  <input
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    Seating Capacity *
+                  </label>
+                  <Input
                     type="number"
                     min="1"
                     placeholder="e.g. 45"
@@ -853,201 +925,306 @@ export default function ManagerDashboard() {
                     onChange={(e) => setBusForm({ ...busForm, capacity: e.target.value })}
                     required
                   />
-                </label>
-                <label>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
                   Operational Status
-                  <select
-                    value={busForm.status}
-                    onChange={(e) => setBusForm({ ...busForm, status: e.target.value })}
-                  >
-                    {BUS_STATUS.map((s) => (
-                      <option key={s} value={s}>
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
-                      </option>
-                    ))}
-                  </select>
                 </label>
-                <div className="modal-actions">
-                  <button type="button" className="button button-secondary" onClick={() => setShowBusModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="button button-primary">
-                    {editingBus ? 'Save Changes' : 'Create Bus'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* MODAL: ASSIGN DRIVER TO BUS                               */}
-        {/* ========================================================= */}
-        {assignDriverModal && (
-          <div className="modal-backdrop" onClick={() => setAssignDriverModal(null)}>
-            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h3>Assign Driver: {assignDriverModal.name}</h3>
-                <button type="button" className="btn-close" onClick={() => setAssignDriverModal(null)}>
-                  <X size={18} />
-                </button>
+                <select
+                  value={busForm.status}
+                  onChange={(e) => setBusForm({ ...busForm, status: e.target.value })}
+                  className="flex h-11 w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-2xs outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                >
+                  {BUS_STATUS.map((s) => (
+                    <option key={s} value={s}>
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <form className="modal-form" onSubmit={handleAssignDriver}>
-                <p style={{ fontSize: '14px', color: 'var(--muted)', margin: 0 }}>
-                  Select a certified driver from the campus fleet pool to operate bus #{assignDriverModal.busNumber}.
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowBusModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {editingBus ? 'Save Changes' : 'Create Bus'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: ASSIGN DRIVER TO BUS                               */}
+      {/* ========================================================= */}
+      {assignDriverModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs"
+          onClick={() => setAssignDriverModal(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">
+                  Assign Driver: {assignDriverModal.name}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Select a licensed driver for bus #{assignDriverModal.busNumber}
                 </p>
-                <label>
-                  Select Driver
-                  <select
-                    value={selectedDriverId}
-                    onChange={(e) => setSelectedDriverId(e.target.value)}
-                  >
-                    <option value="">-- No Driver (Unassigned) --</option>
-                    {drivers.map((d) => (
-                      <option key={d._id || d.id} value={d._id || d.id}>
-                        {d.name} ({d.email})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() => setAssignDriverModal(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="button button-primary">
-                    Save Driver Assignment
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* MODAL: ASSIGN ROUTE TO BUS                                */}
-        {/* ========================================================= */}
-        {assignRouteModal && (
-          <div className="modal-backdrop" onClick={() => setAssignRouteModal(null)}>
-            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h3>Assign Route: {assignRouteModal.name}</h3>
-                <button type="button" className="btn-close" onClick={() => setAssignRouteModal(null)}>
-                  <X size={18} />
-                </button>
               </div>
-              <form className="modal-form" onSubmit={handleAssignRoute}>
-                <p style={{ fontSize: '14px', color: 'var(--muted)', margin: 0 }}>
-                  Select the transportation route to map onto bus #{assignRouteModal.busNumber}.
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setAssignDriverModal(null)}
+                className="h-8 w-8 text-slate-400 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleAssignDriver} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Campus Driver
+                </label>
+                <select
+                  value={selectedDriverId}
+                  onChange={(e) => setSelectedDriverId(e.target.value)}
+                  className="flex h-11 w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-2xs outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="">-- No Driver (Unassigned) --</option>
+                  {drivers.map((d) => (
+                    <option key={d._id || d.id} value={d._id || d.id}>
+                      {d.name} ({d.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAssignDriverModal(null)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  Save Assignment
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: ASSIGN ROUTE TO BUS                                */}
+      {/* ========================================================= */}
+      {assignRouteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs"
+          onClick={() => setAssignRouteModal(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">
+                  Assign Route: {assignRouteModal.name}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Select a destination route for bus #{assignRouteModal.busNumber}
                 </p>
-                <label>
-                  Select Campus Route
-                  <select
-                    value={selectedRouteId}
-                    onChange={(e) => setSelectedRouteId(e.target.value)}
-                  >
-                    <option value="">-- No Route (Unassigned) --</option>
-                    {routes.map((r) => (
-                      <option key={r._id || r.id} value={r._id || r.id}>
-                        {r.routeName} ({r.startPoint} → {r.endPoint})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() => setAssignRouteModal(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="button button-primary">
-                    Save Route Assignment
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================= */}
-        {/* MODAL: ADD / EDIT ROUTE                                   */}
-        {/* ========================================================= */}
-        {showRouteModal && (
-          <div className="modal-backdrop" onClick={() => setShowRouteModal(false)}>
-            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h3>{editingRoute ? 'Edit Route' : 'Create New Route'}</h3>
-                <button type="button" className="btn-close" onClick={() => setShowRouteModal(false)}>
-                  <X size={18} />
-                </button>
               </div>
-              <form className="modal-form" onSubmit={handleRouteSubmit}>
-                <label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setAssignRouteModal(null)}
+                className="h-8 w-8 text-slate-400 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleAssignRoute} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Transit Route
+                </label>
+                <select
+                  value={selectedRouteId}
+                  onChange={(e) => setSelectedRouteId(e.target.value)}
+                  className="flex h-11 w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-2xs outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="">-- No Route (Unassigned) --</option>
+                  {routes.map((r) => (
+                    <option key={r._id || r.id} value={r._id || r.id}>
+                      {r.routeName} ({r.startPoint} → {r.endPoint})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAssignRouteModal(null)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  Save Assignment
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: ADD / EDIT ROUTE                                   */}
+      {/* ========================================================= */}
+      {showRouteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs"
+          onClick={() => setShowRouteModal(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">
+                  {editingRoute ? 'Edit Campus Route' : 'Create New Campus Route'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Specify starting point, campus terminus, intermediate stops, and times
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowRouteModal(false)}
+                className="h-8 w-8 text-slate-400 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleRouteSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
                   Route Name *
-                  <input
-                    type="text"
-                    placeholder="e.g. North Campus Express"
-                    value={routeForm.routeName}
-                    onChange={(e) => setRouteForm({ ...routeForm, routeName: e.target.value })}
-                    required
-                  />
                 </label>
-                <label>
-                  Start Location / Origin *
-                  <input
+                <Input
+                  type="text"
+                  placeholder="e.g. North Quad Express"
+                  value={routeForm.routeName}
+                  onChange={(e) => setRouteForm({ ...routeForm, routeName: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    Starting Point *
+                  </label>
+                  <Input
                     type="text"
-                    placeholder="e.g. Main Gate"
+                    placeholder="e.g. Main Campus Gate"
                     value={routeForm.startPoint}
                     onChange={(e) => setRouteForm({ ...routeForm, startPoint: e.target.value })}
                     required
                   />
-                </label>
-                <label>
-                  End Location / Destination *
-                  <input
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    End Point *
+                  </label>
+                  <Input
                     type="text"
                     placeholder="e.g. Science Complex"
                     value={routeForm.endPoint}
                     onChange={(e) => setRouteForm({ ...routeForm, endPoint: e.target.value })}
                     required
                   />
-                </label>
-                <label>
-                  Intermediate Stops (comma-separated)
-                  <input
-                    type="text"
-                    placeholder="e.g. Library, Dorm 3, Cafeteria"
-                    value={routeForm.stops}
-                    onChange={(e) => setRouteForm({ ...routeForm, stops: e.target.value })}
-                  />
-                </label>
-                <label>
-                  Departure Schedules (comma-separated)
-                  <input
-                    type="text"
-                    placeholder="e.g. 08:30 AM, 12:00 PM, 04:30 PM"
-                    value={routeForm.scheduleTimes}
-                    onChange={(e) => setRouteForm({ ...routeForm, scheduleTimes: e.target.value })}
-                  />
-                </label>
-                <div className="modal-actions">
-                  <button type="button" className="button button-secondary" onClick={() => setShowRouteModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="button button-primary">
-                    {editingRoute ? 'Save Route' : 'Create Route'}
-                  </button>
                 </div>
-              </form>
-            </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Stops (Comma separated)
+                </label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Library Plaza, Gym, Tech Hall"
+                  value={routeForm.stops}
+                  onChange={(e) => setRouteForm({ ...routeForm, stops: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Schedule Times (Comma separated)
+                </label>
+                <Input
+                  type="text"
+                  placeholder="e.g. 08:30 AM, 11:00 AM, 03:30 PM"
+                  value={routeForm.scheduleTimes}
+                  onChange={(e) => setRouteForm({ ...routeForm, scheduleTimes: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Route Status
+                </label>
+                <select
+                  value={routeForm.status}
+                  onChange={(e) => setRouteForm({ ...routeForm, status: e.target.value })}
+                  className="flex h-11 w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-2xs outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowRouteModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {editingRoute ? 'Save Changes' : 'Create Route'}
+                </Button>
+              </div>
+            </form>
           </div>
-        )}
-      </main>
-    </div>
+        </div>
+      )}
+    </DashboardShell>
   )
 }
