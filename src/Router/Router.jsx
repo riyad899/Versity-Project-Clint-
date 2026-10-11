@@ -16,42 +16,51 @@ const routes = createBrowserRouter([
     element: <Root />,
     children: [
       { index: true, element: <Home /> },
-      { path: 'login', element: <Login /> },
-      { path: 'signup', element: <Signup /> },
-      { path: 'dashboard', element: <DashboardRedirect /> },
-      {
-        path: 'admin',
-        element: (
-          <ProtectedRoute allowedRoles={['admin']}>
-            <AdminDashboard />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: 'manager',
-        element: (
-          <ProtectedRoute allowedRoles={['transportation-manager', 'admin']}>
-            <ManagerDashboard />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: 'driver',
-        element: (
-          <ProtectedRoute allowedRoles={['driver', 'admin']}>
-            <DriverDashboard />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: 'passenger',
-        element: (
-          <ProtectedRoute allowedRoles={['user', 'admin']}>
-            <PassengerDashboard />
-          </ProtectedRoute>
-        ),
-      },
     ],
+  },
+  {
+    path: 'login',
+    element: <Login />,
+  },
+  {
+    path: 'signup',
+    element: <Signup />,
+  },
+  {
+    path: 'dashboard',
+    element: <DashboardRedirect />,
+  },
+  {
+    path: 'admin',
+    element: (
+      <ProtectedRoute allowedRoles={['admin']}>
+        <AdminDashboard />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: 'manager',
+    element: (
+      <ProtectedRoute allowedRoles={['transportation-manager', 'admin']}>
+        <ManagerDashboard />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: 'driver',
+    element: (
+      <ProtectedRoute allowedRoles={['driver', 'admin']}>
+        <DriverDashboard />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: 'passenger',
+    element: (
+      <ProtectedRoute allowedRoles={['user', 'admin']}>
+        <PassengerDashboard />
+      </ProtectedRoute>
+    ),
   },
 ])
 
